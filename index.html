@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>滾輪分頁網頁</title>
+
+  <style>
+    html,
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    }
+
+    #viewport {
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .panel {
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: clamp(2rem, 7vw, 5rem);
+      font-weight: 700;
+    }
+
+    .first        { background-color: #264653; }
+    .second       { background-color: #315e4b; }
+    .third-top    { background-color: #68478d; }
+    .third-bottom { background-color: #843e69; }
+    .fourth       { background-color: #9a4a27; }
+    .fifth        { background-color: #294a83; }
+  </style>
+</head>
+<body>
+  <main id="viewport">
+    <div class="panel first">第一頁</div>
+    <div class="panel second">第二頁</div>
+    <div class="panel third-top">第三頁上半</div>
+    <div class="panel third-bottom">第三頁下半</div>
+    <div class="panel fourth">第四頁</div>
+    <div class="panel fifth">第五頁</div>
+  </main>
+
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script>
+    $(function () {
+      const $viewport = $("#viewport");
+      const viewport = $viewport[0];
+      const panels = $viewport.children(".panel").get();
+      const animationDuration = 750;
+      const wheelPause = 120;
+
+      let currentPage = 1;
+      let animating = false;
+      let edgeDirection = 0;
+      let lastEdgeEvent = 0;
+
+      viewport.scrollTop = 0;
+
+      function goToPage(page, panelIndex) {
+        animating = true;
+        edgeDirection = 0;
+
+        $viewport.animate(
+          { scrollTop: panels[panelIndex].offsetTop },
+          animationDuration,
+          "swing",
+          function () {
+            currentPage = page;
+            animating = false;
+          }
+        );
+      }
+
+      function scrollThirdPage(delta, direction) {
+        const top = panels[2].offsetTop;
+        const bottom = panels[3].offsetTop;
+        const position = viewport.scrollTop;
+        const atTop = position <= top + 1;
+        const atBottom = position >= bottom - 1;
+        const movingOutward = (atTop && direction < 0) ||
+                              (atBottom && direction > 0);
+        const now = performance.now();
+
+        if (movingOutward) {
+          // 持續收到同方向的事件時，先停在邊界，等下一次滾動。
+          if (edgeDirection === direction && now - lastEdgeEvent < wheelPause) {
+            lastEdgeEvent = now;
+            return;
+          }
+
+          if (direction > 0) {
+            goToPage(4, 4);
+          } else {
+            goToPage(2, 1);
+          }
+          return;
+        }
+
+        // 第三頁內依照滾輪位移捲動，單次位移最多到達邊界。
+        const nextPosition = Math.max(top, Math.min(bottom, position + delta));
+        viewport.scrollTop = nextPosition;
+        edgeDirection = 0;
+
+        if (nextPosition <= top + 1 && direction < 0) {
+          viewport.scrollTop = top;
+          edgeDirection = direction;
+        } else if (nextPosition >= bottom - 1 && direction > 0) {
+          viewport.scrollTop = bottom;
+          edgeDirection = direction;
+        }
+
+        if (edgeDirection !== 0) {
+          lastEdgeEvent = now;
+        }
+      }
+
+      // 明確允許取消瀏覽器的預設捲動，避免與分頁動畫同時作用。
+      viewport.addEventListener("wheel", function (event) {
+        if (event.ctrlKey || event.deltaY === 0) {
+          return;
+        }
+
+        event.preventDefault();
+
+        if (animating) {
+          return;
+        }
+
+        const direction = Math.sign(event.deltaY);
+
+        if (currentPage === 3) {
+          // 將以行或頁為單位的滾輪位移換算為像素。
+          let delta = event.deltaY;
+          if (event.deltaMode === 1) {
+            delta *= 16;
+          } else if (event.deltaMode === 2) {
+            delta *= viewport.clientHeight;
+          }
+
+          scrollThirdPage(delta, direction);
+          return;
+        }
+
+        const nextPage = currentPage + direction;
+        if (nextPage < 1 || nextPage > 5) {
+          return;
+        }
+
+        // 往下進第三頁時對齊上半，往上進入時對齊下半。
+        let panelIndex = nextPage - 1;
+        if (nextPage > 3 || (nextPage === 3 && direction < 0)) {
+          panelIndex += 1;
+        }
+
+        goToPage(nextPage, panelIndex);
+      }, { passive: false });
+    });
+  </script>
+</body>
+</html>
